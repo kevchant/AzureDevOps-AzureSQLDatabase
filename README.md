@@ -1,6 +1,6 @@
 # Database Project for Azure SQL Database
 
-Example of a SQL Server Database Project that deploys to an Azure SQl Database in Azure DevOps.
+Example of a SQL Server Database Project that deploys to an Azure SQL Database in Azure DevOps.
 
 It uses a YAML pipeline, which is in the AzureDevOpsTemplates folder.
 
