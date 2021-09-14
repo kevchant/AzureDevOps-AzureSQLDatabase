@@ -1,0 +1,96 @@
+# Basic example of how to install to an Azure SQL Database
+# Based on the SSDT-With-tSQLt-Template created by Sander
+# You need a self-hosted agent installed locally for this to work
+
+# For this pipeline you also need to setup the below pipeline variables
+# Either in the pipeline itself or using the LIBRARY feature to create a variable group
+  # agentpool - The name of the pool your local Azure DevOps Agent has been setup in
+   # alternative syntax for a Microsoft-hosted pool is commented out
+  # azuresubscription - The Azure subscription you use, 
+      # either it's full name or a service connection
+      # However, if using the full name for the variable it cannot be secret
+      # You will also need to give your pipeline permission when you first run it
+      # I recommend creating a service connection in PROJECT SETTINGS instead 
+      # of using full account details
+  # servername - The name of the logical Azure Server for the Azure SQL database
+    # For a local Docker container you will need to specify the port as well (e.g. localhost,1443)
+  # database - The Azure SQL database you want the update deployed to
+  # sqluser - User name to connect to SQL Server, try and keep this secret
+  # sqlpw - Password of above user, definitely keep this one secret
+
+# I set these global variables as examples, feel free to change them
+variables:
+  configuration: release
+  artifactname: AzureSQLDBDacPac 
+
+# Note that I have set the trigger below to exclude main
+# Otherwise the pipeline will try and run in Azure DevOps if added
+# To set it to run when the branch is updated change the setting from exclude to include
+trigger:
+  branches:
+    exclude:
+    - main
+
+# This is the name of the pool you have setup your local Azure DevOps Agent in
+pool: 
+  name: $(agentpool)
+
+# To use a Microsoft-hosted pool comment out the above and uncomment the below:
+# pool: 
+#   vmimage: windows-latest
+
+stages:
+
+- stage: BuildArtifact
+  displayName: 'Build Azure SQL DB artifact'
+  jobs:
+    - job: 'BuildArtifact'
+      displayName: 'Build artifact for Azure SQL DB'  
+
+      steps:
+      - task: VSBuild@1
+        displayName: 'Build Database Project'
+        inputs:
+          solution: AzureSQLDB.sqlproj
+          configuration: $(configuration)
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Azure SQL DB artifact'
+        inputs:
+          PathtoPublish: 'bin\$(configuration)'
+          ArtifactName: $(artifactname)
+          publishLocation: 'Container'
+
+- stage: Release
+  dependsOn: BuildArtifact
+  displayName: 'Deploy SQL 2019 dacpac'
+
+  jobs:
+    - job: 'Deploy2019'
+      displayName: 'Deploy SQL Server 2019 dacpac'
+      # As you can see below, you can also set variables locally in jobs
+      variables:
+        variables:
+        dacpacfile: $(System.ArtifactsDirectory)\$(artifactname)\AzureSQLDB.dacpac
+
+      steps:
+      - task: DownloadBuildArtifacts@0
+        displayName: 'Download Artifacts'
+        inputs:
+          buildType: 'current'
+          downloadType: 'specific'
+          artifactName:  '$(artifactname)'
+          downloadPath: '$(System.ArtifactsDirectory)'
+
+      - task: SqlAzureDacpacDeployment@1
+        displayName: 'Install DACPAC on Azure SQL DB'
+        inputs:
+          azureSubscription: '$(azuresubscription)'
+          AuthenticationType: 'server'
+          ServerName: $(servername)
+          DatabaseName: '$(database)'
+          SqlUsername: '$(sqluser)'
+          SqlPassword: '$(sqlpw)'
+          deployType: 'DacpacTask'
+          DeploymentAction: 'Publish'
+          DacpacFile: '$(dacpacfile)'
